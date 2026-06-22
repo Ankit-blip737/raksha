@@ -16,6 +16,8 @@ import RiskMeter from './components/RiskMeter.jsx'
 import ScamAlertOverlay from './components/ScamAlertOverlay.jsx'
 import SafeWordSetup from './components/SafeWordSetup.jsx'
 import ModelLoadingScreen from './components/ModelLoadingScreen.jsx'
+import SignalPanel from './components/SignalPanel.jsx'
+import PipelineViz from './components/PipelineViz.jsx'
 import { scoreRisk } from './services/riskScorer.js'
 import { callMachine } from './state/callMachine.js'
 import { useRakshaStore } from './state/useRakshaStore.js'
@@ -42,6 +44,7 @@ export default function App() {
   const [showDemoNote, setShowDemoNote] = useState(false)
   const [workerStatus, setWorkerStatus] = useState('Initializing local model...')
   const [modelProgress, setModelProgress] = useState(0)
+  const [elapsed, setElapsed] = useState(0)
 
   // Call lifecycle FSM
   const [callState, send] = useMachine(callMachine)
@@ -138,10 +141,14 @@ export default function App() {
     elapsedSecondsRef.current = 0
     lastAnalyzedTranscript.current = ''
     setTranscript('')
+    setElapsed(0)
     useRakshaStore.getState().resetCall()
     sendRef.current({ type: 'RESET' }) // ended -> idle (no-op if already idle)
     sendRef.current({ type: 'START' })
-    elapsedTimerRef.current = setInterval(() => { elapsedSecondsRef.current += 1 }, 1000)
+    elapsedTimerRef.current = setInterval(() => {
+      elapsedSecondsRef.current += 1
+      setElapsed(elapsedSecondsRef.current)
+    }, 1000)
   }, [])
 
   const stopCall = useCallback(() => {
@@ -198,6 +205,12 @@ export default function App() {
             </button>
           </div>
           <div className="flex items-center gap-3">
+            {callActive && (
+              <span className="text-[12px] font-bold text-white/80 tracking-widest tabular-nums flex items-center gap-2 bg-white/5 px-3 py-1.5 rounded-full border border-white/10">
+                <span className="w-1.5 h-1.5 rounded-full bg-rose-500 animate-pulse"></span>
+                {String(Math.floor(elapsed / 60)).padStart(2, '0')}:{String(elapsed % 60).padStart(2, '0')}
+              </span>
+            )}
             {workerStatus === 'ready' && modelDevice && (
               <span className="text-[11px] text-emerald-300/80 font-medium tracking-[0.1em] uppercase flex items-center gap-2 bg-emerald-500/10 px-3 py-1.5 rounded-full border border-emerald-500/20">
                 <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse"></span>
@@ -259,10 +272,17 @@ export default function App() {
           </div>
         </div>
 
+        {(callActive || signals.length > 0) && (
+          <SignalPanel signals={signals} lang={lang} />
+        )}
+
+        <PipelineViz lang={lang} />
+
         <LiveTranscript
           transcript={transcript}
           lang={lang}
           isActive={callActive}
+          signals={signals}
         />
 
         {showSettings && (
