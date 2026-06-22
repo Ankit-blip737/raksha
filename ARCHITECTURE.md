@@ -31,7 +31,7 @@ graph TD
     Classifier -->|Threat Signals| UI
 
     UI -.->|Offline Mode| WebLLM
-    UI -->|Online Mode (Signals Only)| Socket
+    UI -->|Online Mode| Socket
     Socket --> LangGraph
     LangGraph <--> RAG
     RAG <--> DB
