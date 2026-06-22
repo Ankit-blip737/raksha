@@ -52,7 +52,7 @@ const UI = {
   },
 }
 
-export default function CallSimulator({ lang, onTranscriptUpdate, onCallStart, onCallStop, onAudioChunk, voiceCloneWorkerReady }) {
+export default function CallSimulator({ lang, onTranscriptUpdate, onCallStart, onCallStop, onAudioChunk, voiceCloneWorkerReady, initVoiceCloneWorker }) {
   const [mode, setMode] = useState('script')
   const [selectedScript, setSelectedScript] = useState('digitalArrestHi')
   const [isRunning, setIsRunning] = useState(false)
@@ -87,7 +87,7 @@ export default function CallSimulator({ lang, onTranscriptUpdate, onCallStart, o
     start: startWhisper,
     stop: stopWhisper,
     reset: resetWhisper,
-  } = useWhisperASR(lang)
+  } = useWhisperASR(lang, mode === 'whisper')
 
   // Forward live mic transcript to parent
   useEffect(() => {
@@ -236,7 +236,10 @@ export default function CallSimulator({ lang, onTranscriptUpdate, onCallStart, o
             key={m}
             id={`mode-${m}`}
             disabled={isRunning}
-            onClick={() => setMode(m)}
+            onClick={() => {
+              setMode(m);
+              if (m === 'whisper') initVoiceCloneWorker?.();
+            }}
             className={`px-5 py-2.5 text-[13px] font-bold rounded-full transition-all duration-500 disabled:opacity-40 ${
               mode === m
                 ? m === 'whisper'

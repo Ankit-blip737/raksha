@@ -17,7 +17,7 @@ const CHUNK_DURATION_S = 2.5
 // Maximum accumulated transcript to keep in memory
 const MAX_TRANSCRIPT_WORDS = 300
 
-export function useWhisperASR(lang = 'en') {
+export function useWhisperASR(lang = 'en', shouldLoad = false) {
   const [transcript, setTranscript] = useState('')
   const [isListening, setIsListening] = useState(false)
   const [workerStatus, setWorkerStatus] = useState('idle') // idle | loading | ready | error
@@ -37,8 +37,11 @@ export function useWhisperASR(lang = 'en') {
 
   useEffect(() => { langRef.current = lang }, [lang])
 
-  // Initialize the Whisper worker once
+  // Initialize the Whisper worker once requested
   useEffect(() => {
+    if (!shouldLoad) return
+    if (workerRef.current) return
+
     const worker = new Worker(
       new URL('../workers/whisper.worker.js', import.meta.url),
       { type: 'module' }
@@ -83,7 +86,7 @@ export function useWhisperASR(lang = 'en') {
       worker.terminate()
       workerRef.current = null
     }
-  }, [])
+  }, [shouldLoad])
 
   const stopListening = useCallback(() => {
     // Stop the audio stream

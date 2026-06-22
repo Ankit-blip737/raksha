@@ -225,8 +225,10 @@ export default function App() {
     worker.postMessage({ type: 'init' })
   }, [llmStatus])
 
-  // ── Phase 4 Task 3: Initialize Voice Clone worker ────────────────────────────
-  useEffect(() => {
+  const initVoiceCloneWorker = useCallback(() => {
+    if (voiceCloneWorkerRef.current) return
+
+    setVoiceCloneWorkerStatus('loading')
     const worker = new Worker(
       new URL('./workers/voiceClone.worker.js', import.meta.url),
       { type: 'module' }
@@ -237,7 +239,6 @@ export default function App() {
       if (type === 'ready') {
         setVoiceCloneWorkerStatus('ready')
       } else if (type === 'result' && isCloned && signal) {
-        // Inject voice_clone into the current signal set
         const store = useRakshaStore.getState()
         const currentSignals = store.signals
         const alreadyPresent = currentSignals.some((s) => s.id === 'voice_clone')
@@ -252,8 +253,10 @@ export default function App() {
 
     voiceCloneWorkerRef.current = worker
     worker.postMessage({ type: 'init' })
+  }, [])
 
-    return () => worker.terminate()
+  useEffect(() => {
+    return () => voiceCloneWorkerRef.current?.terminate()
   }, [])
 
   // ── Expose audio feed hook for CallSimulator (Whisper + VoiceClone) ──────────
@@ -421,6 +424,7 @@ export default function App() {
               onCallStop={stopCall}
               onAudioChunk={handleAudioChunk}
               voiceCloneWorkerReady={voiceCloneWorkerStatus === 'ready'}
+              initVoiceCloneWorker={initVoiceCloneWorker}
             />
           </div>
           <div className="md:col-span-5">
