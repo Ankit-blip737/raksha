@@ -1,11 +1,10 @@
 /**
- * signalMeta.js — shared presentation metadata for the 5 scam signals.
- * One source of truth for label / icon / weight / color so the SignalPanel,
- * PipelineViz, transcript highlighter and overlay stay visually consistent.
+ * signalMeta.js — shared presentation metadata for all 6 scam signals.
+ * Phase 4: Added voice_clone as the 6th signal.
  *
  * Color classes are written out in full so Tailwind's content scanner keeps them.
  */
-export const SIGNAL_ORDER = ['urgency', 'authority', 'secrecy', 'threat', 'payment']
+export const SIGNAL_ORDER = ['urgency', 'authority', 'secrecy', 'threat', 'payment', 'voice_clone']
 
 export const SIGNAL_META = {
   urgency: {
@@ -57,5 +56,15 @@ export const SIGNAL_META = {
     chip: 'bg-rose-500/10 border-rose-500/30',
     bar: 'bg-rose-500',
     mark: 'bg-rose-500/25 text-rose-100 decoration-rose-400/60',
+  },
+  voice_clone: {
+    label: { en: 'AI Voice Clone', hi: 'AI आवाज़ क्लोन' },
+    icon: '🎭',
+    weight: 80,
+    dot: 'bg-fuchsia-400',
+    text: 'text-fuchsia-300',
+    chip: 'bg-fuchsia-500/10 border-fuchsia-500/30',
+    bar: 'bg-fuchsia-500',
+    mark: 'bg-fuchsia-500/25 text-fuchsia-100 decoration-fuchsia-400/60',
   },
 }

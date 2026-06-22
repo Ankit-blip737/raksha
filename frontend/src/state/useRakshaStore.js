@@ -11,6 +11,7 @@
 import { create } from 'zustand'
 
 export const PIPELINE_NODES = ['classify', 'retrieve', 'reason', 'score']
+export const PIPELINE_NODES_OFFLINE = ['retrieve_offline', 'reason_offline', 'score']
 
 const freshPipeline = () => ({
   running: false,
@@ -18,6 +19,7 @@ const freshPipeline = () => ({
   status: Object.fromEntries(PIPELINE_NODES.map((n) => [n, 'idle'])),
   events: [],
   elapsedMs: null,
+  isOffline: false,
 })
 
 export const useRakshaStore = create((set) => ({
@@ -43,11 +45,12 @@ export const useRakshaStore = create((set) => ({
   // ── streamed Tier-2 pipeline ───────────────────────────────────────────────
   pipelineStart: ({ nodes } = {}) => {
     const list = nodes ?? PIPELINE_NODES
+    const isOffline = list.some((n) => n.endsWith('_offline'))
     const status = Object.fromEntries(list.map((n, i) => [n, i === 0 ? 'active' : 'pending']))
     set({
       analyzing: true,
       error: null,
-      pipeline: { running: true, nodes: list, status, events: [], elapsedMs: null },
+      pipeline: { running: true, nodes: list, status, events: [], elapsedMs: null, isOffline },
     })
   },
 

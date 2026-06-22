@@ -50,6 +50,7 @@ function cosineSimilarity(vecA, vecB) {
 }
 
 async function getEmbedding(text) {
+  if (!genAI) throw new Error('GEMINI_API_KEY is missing')
   const model = genAI.getGenerativeModel({ model: config.EMBEDDING_MODEL })
   const result = await model.embedContent(text)
   return result.embedding.values
