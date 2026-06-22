@@ -1,0 +1,115 @@
+@import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&family=Space+Grotesk:wght@500;600;700&display=swap');
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    --bg-base: #050505;
+    --bg-card: rgba(255, 255, 255, 0.03);
+    --border-color: rgba(255, 255, 255, 0.08);
+  }
+
+  body {
+    @apply bg-[#050505] text-[#ededed] antialiased min-h-screen overflow-x-hidden selection:bg-white/20;
+    font-family: 'Plus Jakarta Sans', sans-serif;
+    background-image: 
+      radial-gradient(ellipse 80% 80% at 50% -20%, rgba(120, 119, 198, 0.15), transparent),
+      radial-gradient(circle at 10% 90%, rgba(56, 189, 248, 0.05), transparent 40%);
+  }
+
+  /* Sleek Scrollbar */
+  ::-webkit-scrollbar {
+    width: 4px;
+  }
+  ::-webkit-scrollbar-track {
+    background: transparent;
+  }
+  ::-webkit-scrollbar-thumb {
+    @apply bg-white/20 rounded-full hover:bg-white/40;
+  }
+}
+
+@layer components {
+  /* Framer/Agentura style Bento Card */
+  .card-framer {
+    @apply relative bg-[var(--bg-card)] backdrop-blur-2xl border border-[var(--border-color)] rounded-[32px] p-8 shadow-[0_8px_32px_rgba(0,0,0,0.4)] transition-all duration-500 overflow-hidden;
+  }
+  
+  .card-framer::before {
+    content: '';
+    @apply absolute inset-0 bg-gradient-to-br from-white/5 to-transparent opacity-0 transition-opacity duration-500 pointer-events-none;
+  }
+  
+  .card-framer:hover::before {
+    @apply opacity-100;
+  }
+
+  /* Typography */
+  .heading-framer {
+    font-family: 'Space Grotesk', sans-serif;
+    @apply tracking-tighter;
+  }
+
+  /* Elegant Floating Pill Button */
+  .pill-btn {
+    @apply flex items-center justify-center px-6 py-3.5 rounded-full bg-white/5 border border-white/10 hover:bg-white/10 text-sm font-semibold tracking-wide transition-all duration-300 active:scale-95 shadow-lg backdrop-blur-md;
+  }
+  
+  .pill-btn-active {
+    @apply bg-[#ededed] text-[#050505] hover:bg-white border-transparent shadow-[0_0_20px_rgba(255,255,255,0.3)];
+  }
+
+  .pill-btn-danger {
+    @apply bg-[#e11d48] text-white border-[#be123c] hover:bg-[#be123c] shadow-[0_0_20px_rgba(225,29,72,0.4)];
+  }
+  
+  .pill-btn-safe {
+    @apply bg-[#10b981] text-white border-[#059669] hover:bg-[#059669] shadow-[0_0_20px_rgba(16,185,129,0.4)];
+  }
+
+  /* Script List Button */
+  .script-btn {
+    @apply w-full text-left px-5 py-4 rounded-2xl border border-white/5 bg-black/20 hover:bg-white/5 hover:border-white/10 transition-all duration-300 text-sm font-medium flex items-center justify-between;
+  }
+
+  .script-btn-active {
+    @apply bg-white/10 border-white/20 shadow-inner;
+  }
+
+  /* Status Badges */
+  .badge-framer {
+    @apply px-3 py-1 text-[10px] uppercase tracking-widest font-bold rounded-full border backdrop-blur-md;
+  }
+  .badge-emerald { @apply bg-emerald-500/10 text-emerald-400 border-emerald-500/20; }
+  .badge-rose { @apply bg-rose-500/10 text-rose-400 border-rose-500/20; }
+  .badge-amber { @apply bg-amber-500/10 text-amber-400 border-amber-500/20; }
+}
+
+@layer utilities {
+  .text-glow {
+    text-shadow: 0 0 20px rgba(255,255,255,0.3);
+  }
+}
+
+/* Animations */
+@keyframes slide-up-fade {
+  from { opacity: 0; transform: translateY(20px) scale(0.98); }
+  to { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+.animate-slide-up-fade {
+  animation: slide-up-fade 0.6s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+@keyframes blob {
+  0% { transform: translate(0px, 0px) scale(1); }
+  33% { transform: translate(30px, -50px) scale(1.1); }
+  66% { transform: translate(-20px, 20px) scale(0.9); }
+  100% { transform: translate(0px, 0px) scale(1); }
+}
+
+.animate-blob {
+  animation: blob 10s infinite alternate cubic-bezier(0.4, 0, 0.2, 1);
+}
