@@ -1,12 +1,14 @@
 /**
- * App.jsx — Raksha Web Demo (Phase 4 Zero-Cloud Architecture)
- * Tier-1 Fast Scanner (BERT) runs entirely locally in the browser via Web Workers.
- * Risk scoring is local.
- * Tier-2 Reasoner & RAG runs via WebSockets only when triggered.
+ * App.jsx — Raksha Web Demo
+ * Tier-1 (browser-local embedding classifier) runs in a Web Worker; risk scoring
+ * is local. Tier-2 (RAG + Reasoner) runs as ONE LangGraph streamed over a socket.
+ *
+ * State: call lifecycle = XState `callMachine`; all data = Zustand `useRakshaStore`.
  */
 import React, { useState, useCallback, useRef, useEffect } from 'react'
 import { v4 as uuidv4 } from 'uuid'
 import { io } from 'socket.io-client'
+import { useMachine } from '@xstate/react'
 import LanguageToggle from './components/LanguageToggle.jsx'
 import CallSimulator from './components/CallSimulator.jsx'
 import LiveTranscript from './components/LiveTranscript.jsx'
@@ -15,6 +17,8 @@ import ScamAlertOverlay from './components/ScamAlertOverlay.jsx'
 import SafeWordSetup from './components/SafeWordSetup.jsx'
 import ModelLoadingScreen from './components/ModelLoadingScreen.jsx'
 import { scoreRisk } from './services/riskScorer.js'
+import { callMachine } from './state/callMachine.js'
+import { useRakshaStore } from './state/useRakshaStore.js'
 
 const TRANSCRIPT_WINDOW_WORDS = 100
 
@@ -33,151 +37,144 @@ const UI = {
 export default function App() {
   const [lang, setLang] = useState('en')
   const [transcript, setTranscript] = useState('')
-  const [callActive, setCallActive] = useState(false)
-  const [analysisResult, setAnalysisResult] = useState(null)
-  const [isAnalyzing, setIsAnalyzing] = useState(false)
   const [safeWord, setSafeWord] = useState('')
-  const [showAlert, setShowAlert] = useState(false)
   const [showSettings, setShowSettings] = useState(false)
   const [showDemoNote, setShowDemoNote] = useState(false)
-  const [apiError, setApiError] = useState(null)
   const [workerStatus, setWorkerStatus] = useState('Initializing local model...')
   const [modelProgress, setModelProgress] = useState(0)
-  const [modelDevice, setModelDevice] = useState(null)
+
+  // Call lifecycle FSM
+  const [callState, send] = useMachine(callMachine)
+  const callValue = callState.value
+  const callActive = callValue === 'active' || callValue === 'warn' || callValue === 'block'
+  const showAlert = callValue === 'warn' || callValue === 'block'
+
+  // Data store
+  const riskScore = useRakshaStore((s) => s.riskScore)
+  const action = useRakshaStore((s) => s.action)
+  const signals = useRakshaStore((s) => s.signals)
+  const advisories = useRakshaStore((s) => s.advisories)
+  const alertText = useRakshaStore((s) => s.alertText)
+  const analyzing = useRakshaStore((s) => s.analyzing)
+  const error = useRakshaStore((s) => s.error)
+  const modelDevice = useRakshaStore((s) => s.modelDevice)
 
   const workerRef = useRef(null)
   const socketRef = useRef(null)
   const sessionIdRef = useRef(null)
   const elapsedSecondsRef = useRef(0)
   const elapsedTimerRef = useRef(null)
-  const analyzeTimerRef = useRef(null)
   const lastAnalyzedTranscript = useRef('')
   const transcriptRef = useRef('')
+  const langRef = useRef(lang)
+  const sendRef = useRef(send)
 
   useEffect(() => { transcriptRef.current = transcript }, [transcript])
+  useEffect(() => { langRef.current = lang }, [lang])
+  useEffect(() => { sendRef.current = send }, [send])
 
-  // Initialize Web Worker and WebSocket
+  // Tier-1 result handler — stable (reads latest values via refs / store getState)
+  const handleLocalSignals = useCallback((newSignals) => {
+    const store = useRakshaStore.getState()
+    const elapsed = elapsedSecondsRef.current
+    const { riskScore: rs, action: act } = scoreRisk(newSignals, elapsed)
+    store.applyLocalResult({ signals: newSignals, riskScore: rs, action: act })
+    sendRef.current({ type: 'RISK', action: act, riskScore: rs })
+
+    // Tier-2: stream the LangGraph only on warn/block, and not while one is already running.
+    if ((act === 'warn' || act === 'block') && !store.analyzing) {
+      store.pipelineStart({})
+      socketRef.current?.emit('analyze_stream', {
+        sessionId: sessionIdRef.current,
+        transcriptWindow: lastAnalyzedTranscript.current,
+        lang: langRef.current,
+        signals: newSignals,
+        elapsedSeconds: elapsed,
+      })
+    }
+  }, [])
+
+  // Initialize Web Worker and WebSocket (once)
   useEffect(() => {
+    const store = useRakshaStore.getState()
+
     workerRef.current = new Worker(new URL('./workers/classifier.worker.js', import.meta.url), { type: 'module' })
-    
     workerRef.current.onmessage = (event) => {
-      const { type, data, signals, error, device } = event.data
+      const { type, data, signals: sig, error: err, device } = event.data
       if (type === 'ready') {
         setWorkerStatus('ready')
         setModelProgress(100)
-        if (device) setModelDevice(device)
+        if (device) store.setModelDevice(device)
       } else if (type === 'progress') {
-        if (data.status === 'initiate') {
-          setWorkerStatus(`Initiating download: ${data.file}`)
-        } else if (data.status === 'download') {
-          setWorkerStatus(`Downloading ${data.file}...`)
-        } else if (data.status === 'progress') {
+        if (data.status === 'initiate') setWorkerStatus(`Initiating download: ${data.file}`)
+        else if (data.status === 'download') setWorkerStatus(`Downloading ${data.file}...`)
+        else if (data.status === 'progress') {
           setWorkerStatus(`Downloading ${data.file}`)
           if (typeof data.progress === 'number') setModelProgress(data.progress)
-        } else if (data.status === 'done') {
-          setWorkerStatus(`Loaded ${data.file}`)
-        }
+        } else if (data.status === 'done') setWorkerStatus(`Loaded ${data.file}`)
       } else if (type === 'result') {
-        handleLocalSignals(signals)
+        handleLocalSignals(sig)
       } else if (type === 'error') {
-        setApiError('Local classifier error: ' + error)
+        store.setError('Local classifier error: ' + err)
       }
     }
-
     workerRef.current.postMessage({ type: 'init' })
 
     socketRef.current = io(import.meta.env.VITE_WS_URL ?? 'http://localhost:4000')
-    socketRef.current.on('reasoner_result', (data) => {
-      setAnalysisResult(prev => ({
-        ...prev,
-        alertText: data.alertText,
-        signals: data.refinedSignals ?? prev?.signals,
-        retrievedAdvisories: data.advisories
-      }))
-      setShowAlert(true)
-      setIsAnalyzing(false)
-    })
-    socketRef.current.on('reasoner_error', (data) => {
-      setApiError('Reasoner error: ' + data.error)
-      setIsAnalyzing(false)
-    })
+    const s = socketRef.current
+    s.on('pipeline_start', (d) => useRakshaStore.getState().pipelineStart(d))
+    s.on('node_update', (d) => useRakshaStore.getState().nodeUpdate(d))
+    s.on('pipeline_complete', (d) => useRakshaStore.getState().pipelineComplete(d))
+    s.on('pipeline_error', (d) => useRakshaStore.getState().pipelineError('Reasoner error: ' + d.error))
 
     return () => {
       workerRef.current?.terminate()
       socketRef.current?.disconnect()
     }
-  }, [])
-
-  const handleLocalSignals = useCallback((newSignals) => {
-    const elapsed = elapsedSecondsRef.current
-    const { riskScore, action } = scoreRisk(newSignals, elapsed)
-    
-    setAnalysisResult(prev => ({
-      ...prev,
-      riskScore,
-      action,
-      signals: newSignals,
-    }))
-
-    // Tier 2: Trigger Reasoner via WebSockets only if it's a warn/block scenario
-    if (action === 'warn' || action === 'block') {
-      setIsAnalyzing(true)
-      socketRef.current.emit('analyze_reasoner', {
-        transcriptWindow: lastAnalyzedTranscript.current,
-        lang,
-        signals: newSignals
-      })
-    }
-  }, [lang])
+  }, [handleLocalSignals])
 
   const startCall = useCallback(() => {
     sessionIdRef.current = uuidv4()
     elapsedSecondsRef.current = 0
-    setTranscript('')
-    setAnalysisResult(null)
-    setShowAlert(false)
-    setApiError(null)
     lastAnalyzedTranscript.current = ''
-    setCallActive(true)
-
-    elapsedTimerRef.current = setInterval(() => {
-      elapsedSecondsRef.current += 1
-    }, 1000)
+    setTranscript('')
+    useRakshaStore.getState().resetCall()
+    sendRef.current({ type: 'RESET' }) // ended -> idle (no-op if already idle)
+    sendRef.current({ type: 'START' })
+    elapsedTimerRef.current = setInterval(() => { elapsedSecondsRef.current += 1 }, 1000)
   }, [])
 
   const stopCall = useCallback(() => {
     clearInterval(elapsedTimerRef.current)
-    clearTimeout(analyzeTimerRef.current)
-    setCallActive(false)
+    sendRef.current({ type: 'STOP' })
   }, [])
 
-  // Local interval analysis — runs rapidly entirely in browser without debounce starvation
+  // Stop the elapsed timer whenever the call is not running.
+  useEffect(() => {
+    if (callValue === 'ended' || callValue === 'idle') clearInterval(elapsedTimerRef.current)
+  }, [callValue])
+
+  // Local interval analysis — entirely in-browser, every 1.5s while the call runs.
   useEffect(() => {
     if (!callActive || workerStatus !== 'ready') return
-    
     const intervalId = setInterval(() => {
       const currentText = transcriptRef.current
       if (!currentText) return
       if (Math.abs(currentText.length - lastAnalyzedTranscript.current.length) < 10) return
       lastAnalyzedTranscript.current = currentText
-
       const words = currentText.split(/\s+/).filter(Boolean)
       const transcriptWindow = words.slice(-TRANSCRIPT_WINDOW_WORDS).join(' ')
-
-      workerRef.current.postMessage({
-        type: 'classify',
-        id: uuidv4(),
-        text: transcriptWindow
-      })
+      workerRef.current.postMessage({ type: 'classify', id: uuidv4(), text: transcriptWindow })
     }, 1500)
-
     return () => clearInterval(intervalId)
   }, [callActive, workerStatus])
 
+  // Overlay dismiss: ACK is interpreted by the FSM (warn -> continue, block -> end).
   const handleDismissAlert = useCallback(() => {
-    setShowAlert(false)
-    stopCall()
-  }, [stopCall])
+    sendRef.current({ type: 'ACK' })
+  }, [])
+
+  const overlayResult = { riskScore, action, signals, alertText, retrievedAdvisories: advisories }
 
   return (
     <div className="min-h-screen text-[#ededed] flex flex-col relative z-0 selection:bg-white/20">
@@ -207,7 +204,7 @@ export default function App() {
                 {modelDevice === 'webgpu' ? '⚡ WebGPU' : '🧩 WASM'} · On-device
               </span>
             )}
-            {isAnalyzing && (
+            {analyzing && (
               <span className="text-[11px] text-[#ededed] font-medium tracking-[0.1em] uppercase flex items-center gap-2 bg-white/10 px-3 py-1.5 rounded-full border border-white/10 backdrop-blur-md">
                 <span className="w-1.5 h-1.5 rounded-full bg-white animate-pulse"></span>
                 {UI.analyzing[lang]}
@@ -237,10 +234,10 @@ export default function App() {
       <main className="max-w-6xl mx-auto px-6 py-12 flex-1 w-full space-y-8 relative">
         {/* Decorative background blobs */}
         <div className="absolute top-0 left-1/4 w-[500px] h-[500px] bg-indigo-500/10 rounded-full blur-[120px] pointer-events-none animate-blob"></div>
-        
-        {apiError && (
+
+        {error && (
           <div className="bg-[#e11d48]/10 border border-[#e11d48]/20 rounded-[24px] px-8 py-5 backdrop-blur-xl animate-slide-up-fade">
-            <p className="text-[#ff4d6d] text-[15px] font-medium tracking-wide">⚠ {apiError}</p>
+            <p className="text-[#ff4d6d] text-[15px] font-medium tracking-wide">⚠ {error}</p>
           </div>
         )}
 
@@ -255,8 +252,8 @@ export default function App() {
           </div>
           <div className="md:col-span-5">
             <RiskMeter
-              riskScore={analysisResult?.riskScore}
-              action={analysisResult?.action}
+              riskScore={riskScore}
+              action={action}
               lang={lang}
             />
           </div>
@@ -279,13 +276,13 @@ export default function App() {
           </div>
         )}
 
-        {analysisResult?.retrievedAdvisories?.length > 0 && (
+        {advisories?.length > 0 && (
           <div className="card-framer space-y-6 relative z-10 animate-slide-up-fade">
             <p className="text-[12px] font-bold text-white/50 uppercase tracking-[0.2em]">
               {lang === 'en' ? 'Knowledge Base References' : 'संबंधित सलाह'}
             </p>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              {analysisResult.retrievedAdvisories.map(adv => (
+              {advisories.map(adv => (
                 <div key={adv.id} className="flex flex-col justify-between bg-black/20 rounded-[20px] p-6 border border-white/5 hover:bg-white/5 hover:border-white/10 transition-all group">
                   <span className="text-[15px] text-white/90 font-medium leading-relaxed group-hover:text-white transition-colors">{adv.title}</span>
                   <div className="mt-4 flex items-center justify-between">
@@ -312,9 +309,9 @@ export default function App() {
         />
       )}
 
-      {showAlert && analysisResult && (
+      {showAlert && (
         <ScamAlertOverlay
-          analysisResult={analysisResult}
+          analysisResult={overlayResult}
           lang={lang}
           safeWord={safeWord}
           onSafeWordChange={setSafeWord}
