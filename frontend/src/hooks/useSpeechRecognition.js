@@ -15,67 +15,92 @@ export function useSpeechRecognition(lang = 'en-IN') {
   const finalTranscriptRef = useRef('')
 
   useEffect(() => {
-    if (!isSupported) return
-    const recognition = new SpeechRecognition()
-    recognition.continuous = true
-    recognition.interimResults = true
-    recognition.lang = lang
 
-    recognition.onresult = (event) => {
-      let currentSessionFinal = ''
-      let currentSessionInterim = ''
-      for (let i = 0; i < event.results.length; i++) {
-        const text = event.results[i][0].transcript
-        if (event.results[i].isFinal) {
-          currentSessionFinal += text + ' '
-        } else {
-          currentSessionInterim += text
-        }
-      }
-      recognitionRef.current._sessionFinal = currentSessionFinal
-      setTranscript(finalTranscriptRef.current + currentSessionFinal + currentSessionInterim)
-    }
-
-    recognition.onerror = (e) => {
-      console.warn('SpeechRecognition error:', e.error)
-      if (e.error === 'not-allowed') setIsListening(false)
-    }
-
-    recognition.onend = () => {
-      if (recognitionRef.current && recognitionRef.current._sessionFinal) {
-        finalTranscriptRef.current += recognitionRef.current._sessionFinal
-        recognitionRef.current._sessionFinal = ''
-      }
-      // Auto-restart if still supposed to be listening
-      if (recognitionRef.current && recognitionRef.current._shouldRun) {
-        try { recognition.start() } catch (e) {}
-      } else {
-        setIsListening(false)
-      }
-    }
-
-    recognitionRef.current = recognition
-    recognitionRef.current._shouldRun = false
     return () => {
-      recognition.abort()
+      if (recognitionRef.current) {
+        recognitionRef.current.onend = null;
+        recognitionRef.current.abort();
+      }
     }
-  }, [isSupported, lang])
+  }, [])
 
   const start = useCallback(() => {
-    if (!isSupported || !recognitionRef.current) return
+    if (!isSupported) return
+    
+    // Clean up old instance
+    if (recognitionRef.current) {
+      recognitionRef.current.onend = null
+      recognitionRef.current.abort()
+    }
+
     finalTranscriptRef.current = ''
-    recognitionRef.current._sessionFinal = ''
     setTranscript('')
-    recognitionRef.current._shouldRun = true
-    try { recognitionRef.current.start() } catch (e) {}
+
     setIsListening(true)
-  }, [isSupported])
+
+    const startNewSession = () => {
+      const recognition = new SpeechRecognition()
+      recognition.continuous = true
+      recognition.interimResults = true
+      recognition.lang = lang
+
+      let sessionFinalStr = ''
+
+      recognition.onresult = (event) => {
+        let currentFinal = ''
+        let currentInterim = ''
+        
+        for (let i = 0; i < event.results.length; i++) {
+          const text = event.results[i][0].transcript
+          if (event.results[i].isFinal) {
+            currentFinal += text + ' '
+          } else {
+            currentInterim += text
+          }
+        }
+        
+        sessionFinalStr = currentFinal
+        setTranscript(finalTranscriptRef.current + currentFinal + currentInterim)
+      }
+
+      recognition.onerror = (e) => {
+        console.warn('SpeechRecognition error:', e.error)
+        if (e.error === 'not-allowed') {
+          setIsListening(false)
+        }
+      }
+
+      recognition.onend = () => {
+        finalTranscriptRef.current += sessionFinalStr
+        
+        // Check if we should auto-restart
+        if (recognitionRef.current === recognition) {
+          try {
+            startNewSession()
+          } catch (e) {
+            setIsListening(false)
+          }
+        }
+      }
+
+      recognitionRef.current = recognition
+      try {
+        recognition.start()
+      } catch (e) {
+        console.warn(e)
+      }
+    }
+
+    startNewSession()
+  }, [isSupported, lang])
 
   const stop = useCallback(() => {
-    if (!recognitionRef.current) return
-    recognitionRef.current._shouldRun = false
-    recognitionRef.current.stop()
     setIsListening(false)
+    if (recognitionRef.current) {
+      const rec = recognitionRef.current
+      recognitionRef.current = null // Prevent auto-restart
+      rec.stop()
+    }
   }, [])
 
   const reset = useCallback(() => {
