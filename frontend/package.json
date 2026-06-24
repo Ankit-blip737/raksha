@@ -12,6 +12,7 @@
   "dependencies": {
     "@huggingface/transformers": "^3.5.1",
     "@mlc-ai/web-llm": "^0.2.84",
+    "@vercel/analytics": "^2.0.1",
     "@xstate/react": "^6.1.0",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",

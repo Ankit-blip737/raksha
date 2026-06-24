@@ -16,6 +16,7 @@ import React, { useState, useCallback, useRef, useEffect } from 'react'
 import { v4 as uuidv4 } from 'uuid'
 import { io } from 'socket.io-client'
 import { useMachine } from '@xstate/react'
+import { Analytics } from '@vercel/analytics/react'
 import LanguageToggle from './components/LanguageToggle.jsx'
 import CallSimulator from './components/CallSimulator.jsx'
 import LiveTranscript from './components/LiveTranscript.jsx'
@@ -513,6 +514,7 @@ export default function App() {
           onDismiss={handleDismissAlert}
         />
       )}
+      <Analytics />
     </div>
   )
 }
