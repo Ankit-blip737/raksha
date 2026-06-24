@@ -41,17 +41,30 @@ export function splitSentences(text, maxWords = 8) {
   if (!text) return []
   const sentences = text.split(/[.!?।\n]+/).map((s) => s.trim()).filter(Boolean)
   const out = []
+  
   for (const s of sentences) {
     const words = s.split(/\s+/).filter(Boolean)
-    if (words.length > maxWords) {
-      const clauses = s
-        .split(/[,;:—–]+/)
-        .map((c) => c.trim())
-        .filter((c) => c.split(/\s+/).filter(Boolean).length >= 2)
-      if (clauses.length) out.push(...clauses)
-      else out.push(s)
-    } else {
+    if (words.length <= maxWords) {
       out.push(s)
+      continue
+    }
+
+    const clauses = s
+      .split(/[,;:—–]+/)
+      .map((c) => c.trim())
+      .filter((c) => c.split(/\s+/).filter(Boolean).length >= 2)
+
+    // If soft splitting didn't help (no commas) or clauses are still too long (e.g. Live Mic)
+    if (clauses.length <= 1 || clauses.some(c => c.split(/\s+/).filter(Boolean).length > 12)) {
+      // Sliding window chunking
+      const step = Math.max(1, maxWords - 2)
+      for (let i = 0; i < words.length; i += step) {
+        const chunk = words.slice(i, i + maxWords).join(' ')
+        out.push(chunk)
+        if (i + maxWords >= words.length) break
+      }
+    } else {
+      out.push(...clauses)
     }
   }
   return out.filter((s) => s.length > 4)
