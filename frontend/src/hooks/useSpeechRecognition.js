@@ -22,20 +22,18 @@ export function useSpeechRecognition(lang = 'en-IN') {
     recognition.lang = lang
 
     recognition.onresult = (event) => {
-      let interim = ''
-      let finalDelta = ''
-      for (let i = event.resultIndex; i < event.results.length; i++) {
+      let currentSessionFinal = ''
+      let currentSessionInterim = ''
+      for (let i = 0; i < event.results.length; i++) {
         const text = event.results[i][0].transcript
         if (event.results[i].isFinal) {
-          finalDelta += text + ' '
+          currentSessionFinal += text + ' '
         } else {
-          interim += text
+          currentSessionInterim += text
         }
       }
-      if (finalDelta) {
-        finalTranscriptRef.current += finalDelta
-      }
-      setTranscript(finalTranscriptRef.current + interim)
+      recognitionRef.current._sessionFinal = currentSessionFinal
+      setTranscript(finalTranscriptRef.current + currentSessionFinal + currentSessionInterim)
     }
 
     recognition.onerror = (e) => {
@@ -44,9 +42,13 @@ export function useSpeechRecognition(lang = 'en-IN') {
     }
 
     recognition.onend = () => {
+      if (recognitionRef.current && recognitionRef.current._sessionFinal) {
+        finalTranscriptRef.current += recognitionRef.current._sessionFinal
+        recognitionRef.current._sessionFinal = ''
+      }
       // Auto-restart if still supposed to be listening
       if (recognitionRef.current && recognitionRef.current._shouldRun) {
-        recognition.start()
+        try { recognition.start() } catch (e) {}
       } else {
         setIsListening(false)
       }
@@ -62,9 +64,10 @@ export function useSpeechRecognition(lang = 'en-IN') {
   const start = useCallback(() => {
     if (!isSupported || !recognitionRef.current) return
     finalTranscriptRef.current = ''
+    recognitionRef.current._sessionFinal = ''
     setTranscript('')
     recognitionRef.current._shouldRun = true
-    recognitionRef.current.start()
+    try { recognitionRef.current.start() } catch (e) {}
     setIsListening(true)
   }, [isSupported])
 
