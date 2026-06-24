@@ -17,6 +17,7 @@ import { v4 as uuidv4 } from 'uuid'
 import { io } from 'socket.io-client'
 import { useMachine } from '@xstate/react'
 import { Analytics } from '@vercel/analytics/react'
+import { SpeedInsights } from '@vercel/speed-insights/react'
 import LanguageToggle from './components/LanguageToggle.jsx'
 import CallSimulator from './components/CallSimulator.jsx'
 import LiveTranscript from './components/LiveTranscript.jsx'
@@ -515,6 +516,7 @@ export default function App() {
         />
       )}
       <Analytics />
+      <SpeedInsights />
     </div>
   )
 }
